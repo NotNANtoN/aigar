@@ -1,6 +1,0 @@
-README.md
-gym_aigar.egg-info/PKG-INFO
-gym_aigar.egg-info/SOURCES.txt
-gym_aigar.egg-info/dependency_links.txt
-gym_aigar.egg-info/requires.txt
-gym_aigar.egg-info/top_level.txt
