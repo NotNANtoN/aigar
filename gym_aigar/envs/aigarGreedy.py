@@ -83,10 +83,7 @@ class AigarGreedyEnv(gym.Env):
         #    return
         #state = self.game.get_state()
         #img = state.image_buffer
-        for bot in self.bots:
-            if bot.type == "Gym":
-                img = bot.rgbGenerator.get_cnn_inputRGB(bot.player)
-                break
+        img = self.gym_bot.rgbGenerator.get_cnn_inputRGB(bot.player)
         
         if img is None:
             img = np.zeros(shape=self.observation_space.shape, dtype=np.uint8)
@@ -135,16 +132,10 @@ class AigarGreedyEnv(gym.Env):
         self.resetBots()
 
     def getStepData(self):
-        for bot in self.bots:
-            if bot.type == "Gym":
-                return bot.getGridStateRepresentation(), bot.getReward(), bot.player.getIsAlive()
-        return None, None, None
-        
+        return self.gym_bot.getGridStateRepresentation(), self.gym_bot.getReward(), self.gym_bot.player.getIsAlive()
     
     def getObsSpaceSize(self):
-        for bot in self.bots:
-            if bot.type == "Gym":
-                return bot.getObsSize()
+        return self.gym_bot.getObsSize()
                 
     def update(self, action=None):
         self.counter += 1
@@ -159,39 +150,14 @@ class AigarGreedyEnv(gym.Env):
         # Slow down game to match FPS (disabled in gym mode)
         #if self.humans:
         #    time.sleep(max( (1/FPS) - (time.time() - timeStart),0))
-        
-        
 
     def takeBotActions(self, action):
         for bot in self.bots:
             bot.makeMove(action)
 
-
     def resetBots(self):
         for bot in self.bots:
             bot.reset()
-
-    def plotSPGTrainingCounts(self):
-        for bot_idx, bot in enumerate(self.bots):
-            playerName = str(bot.getPlayer())
-            name = "BatchSizeOverTime" + playerName
-            if bot.learningAlg is not None and str(bot.learningAlg) == "AC":
-                counts = bot.learningAlg.counts
-                len_counts = len(counts)
-                y = [np.mean(counts[idx:idx + self.pointAveraging]) for idx in range(0, len_counts, self.pointAveraging)]
-                timeAxis = list(range(0, len_counts, self.pointAveraging))
-
-                plt.plot(timeAxis, y)
-                plt.title("Actor Training Batch Size During Training")
-                plt.xlabel("Training Steps")
-                plt.ylabel("Batch Size")
-                plt.savefig(self.path + name + ".pdf")
-                plt.close()
-
-                # Export counts:
-                with open(self.path + "data/" + name + ".txt", "w") as f:
-                    for item in counts:
-                        f.write("%s\n" % item)
 
     def printBotMasses(self):
         for bot in self.bots:
@@ -266,7 +232,6 @@ class AigarGreedyEnv(gym.Env):
         players = self.getPlayers()[:]
         players.sort(key=lambda p: p.getTotalMass(), reverse=True)
         return players[0:10]
-
 
     def getHumans(self):
         return self.humans

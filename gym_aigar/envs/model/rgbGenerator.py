@@ -49,7 +49,6 @@ class RGBGenerator:
             pygame.draw.circle(screen, color, pos, rad)
 
     def drawAllCells(self, player):
-
         fovPos = player.getFovPos()
         fovSize = player.getFovSize()
         pellets = self.field.getPelletsInFov(fovPos, fovSize)

@@ -1,6 +1,22 @@
 import math
 
-class spatialHashTable(object):
+# Numba support for dicts is too experimental as of yet
+#from numba import jitclass, int32, float32
+#from numba.typed import Dict
+
+#spec = [
+#    ('left', int32),               # a simple scalar field
+#    ('top', int32),
+#    ('size', int32),
+#    ('rows', int32),
+#    ('cols', int32),
+#    ('bucketsize', int32),
+#    ('buckets', Dict),      
+#]
+
+
+#@jitclass(spec)
+class SpatialHashTable:
     def __repr__(self):
         name = "Hash table: \n"
         name += "Rows: " + str(self.rows) + " Cols: " + str(self.cols) + " Cellsize: " + str(self.bucketSize) + "\n"
@@ -69,7 +85,6 @@ class spatialHashTable(object):
 
     def getIdsForArea(self, pos, radius):
         ids = set()
-        hashFunc = self.getHashId
         cellLeft = max(0, pos[0] - radius)
         cellTop = max(0, pos[1] - radius)
         bucketLeft = int(cellLeft - cellLeft % self.bucketSize)
@@ -79,7 +94,7 @@ class spatialHashTable(object):
 
         for x in range(bucketLeft, limitX, self.bucketSize):
             for y in range(bucketTop, limitY, self.bucketSize):
-                ids.add(hashFunc(x, y))
+                ids.add(self.getHashId(x, y, self.bucketSize, self.cols))
         return ids
 
     def insertAllFloatingPointObjects(self, objects):
@@ -87,10 +102,9 @@ class spatialHashTable(object):
             ids = self.getIdsForAreaFloatingPoint(obj.getPos(), obj.getRadius())
             for id in ids:
                 self.buckets[id].append(obj)
-
+                    
     def getIdsForAreaFloatingPoint(self, pos, radius):
         ids = set()
-        hashFunc = self.getHashId
         pos = (pos[0] - self.left, pos[1] - self.top)
         cellLeft = max(0, pos[0] - radius)
         cellTop = max(0, pos[1] - radius)
@@ -102,16 +116,15 @@ class spatialHashTable(object):
         while x <= limitX:
             y = bucketTop
             while y <= limitY:
-                ids.add(hashFunc(x,y))
+                ids.add(self.getHashId(x,y, self.bucketSize, self.cols))
                 y += self.bucketSize
             x += self.bucketSize
         return ids
 
-
-    def getHashId(self, x, y):
-        return int(x / self.bucketSize) + int(y / self.bucketSize) * self.cols
-
-
+    @staticmethod
+    #@jit(nopython=True)
+    def getHashId(x, y, bucket_size, cols):
+        return int(x / bucket_size) + int(y / bucket_size) * cols
 
     def getCols(self):
         return self.cols

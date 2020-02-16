@@ -1,2 +1,2 @@
-from gym_aigar.envs.aigarPellet import AigarPelletEnv
-from gym_aigar.envs.aigarGreedy import AigarGreedyEnv
+from gym_aigar.envs.aigarEnv import AigarEnv
+

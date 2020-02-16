@@ -23,12 +23,20 @@ from gym import spaces
 # It contains the field and the players.
 # It links the actions of the players to consequences in the field and updates information.
 
-class AigarPelletEnv(gym.Env):
+class AigarEnv(gym.Env):
     """Custom Environment that follows gym interface"""
     metadata = {'render.modes': ['human']}
 
-    def __init__(self):
-        super(AigarPelletEnv, self).__init__()
+    def __init__(self, rgb=False, num_greedy=0, split=False, eject=False):
+        super(AigarEnv, self).__init__()
+        self.rgb = rgb
+        self.enable_split = split
+        self.enable_eject = eject
+        if num_greedy == 0:
+            self.use_enemy_grid = False
+        else:
+            self.use_enemy_grid = True
+        
         self.listeners = []
         self.virusEnabled = VIRUS_SPAWN
         self.resetLimit = RESET_LIMIT
@@ -49,27 +57,28 @@ class AigarPelletEnv(gym.Env):
 
         self.viewer= None
         # Set up model:
-        self.createBot("Gym")
-        self.action_space = self._action_space()
-        self.observation_space = self._observation_space()
-        #self.createBot("Greedy", None, None)
+        self.gym_bot = self.createBot("Gym")
+        for _ in range(num_greedy):
+            self.createBot("Greedy", None, None)
         self.initialize()
+        # Set up spaces:
+        self.action_space = self.create_action_space()
+        self.num_actions = len(self.action_space.low)
+        self.observation_space = self.create_observation_space()
     
     # Start Interface for gym env:
     def step(self, action):
+        if len(action) != self.num_actions:
+            raise TypeError("The number of dimensions of the action does not match the action space!")
         self.update(action=action)
-        
         obs, reward, done = self.getStepData()
-        
         return obs, reward, done, {}
         
-    
     def reset(self):
         self.field.reset()
         self.resetBots()
         self.counter = 0
         
-    
     def render(self, mode="human", close=False):
         if close:
             if self.viewer is not None:
@@ -78,14 +87,11 @@ class AigarPelletEnv(gym.Env):
             return
         #try:
         #if 'human' == mode and self.no_render:
-        #    print("Close because no render")
+
         #    return
         #state = self.game.get_state()
         #img = state.image_buffer
-        for bot in self.bots:
-            if bot.type == "Gym":
-                img = bot.rgbGenerator.get_cnn_inputRGB(bot.player)
-                break
+        img = self.gym_bot.rgbGenerator.get_cnn_inputRGB(self.gym_bot.player)
         
         if img is None:
             img = np.zeros(shape=self.observation_space.shape, dtype=np.uint8)
@@ -96,26 +102,58 @@ class AigarPelletEnv(gym.Env):
             if self.viewer is None:
                 self.viewer = rendering.SimpleImageViewer()
             self.viewer.imshow(img)
-        #except Exception:
-        #    print(Exception) # Game has been closed
+
         
-    def _action_space(self):
+    def getStepData(self):
+        if self.rgb:
+            state = self.gym_bot.rgbGenerator.get_cnn_inputRGB(self.gym_bot.player)
+        else:
+            state = self.gym_bot.getGridStateRepresentation()
+        reward = self.gym_bot.getReward()
+        alive = self.gym_bot.player.getIsAlive()
+        done = not alive
+        return state, reward, done
+                
+    def update(self, action=None):
+        self.counter += 1
+        # Get the decisions of the bots. Update the field accordingly.
+        self.takeBotActions(action)
+        self.field.update()
+        
+    def create_action_space(self):
         # attack or move, move_degree, move_distance
-        action_low = [0.0, 0.0, 0.0, 0.0]
-        action_high = [1.0, 1.0, 1.0, 1.0]
-        return spaces.Box(np.array(action_low, dtype=np.float32), np.array(action_high, dtype=np.float32))
+        action_low = [0.0, 0.0]
+        action_high = [1.0, 1.0]
+        if self.enable_split:
+            action_low += [0.0]
+            action_high += [1.0]
+        if self.enable_eject:
+            action_low += [0.0]
+            action_high += [1.0]
+            
+        return spaces.Box(np.array(action_low, dtype=np.float32),
+                          np.array(action_high, dtype=np.float32))
 
-    def _observation_space(self):
-        # hit points, cooldown, ground range, is enemy, degree, distance (myself)
-        # hit points, cooldown, ground range, is enemy (enemy)
-        obs_size = self.getObsSpaceSize()
-        obs_low = [0.0 for _ in range(obs_size)]
-        obs_high = [math.inf for _ in range(obs_size)]
+    def rgb_space(self):
+        img = self.gym_bot.rgbGenerator.get_cnn_inputRGB(self.gym_bot.player)
+        obs_low = np.zeros_like(img)
+        obs_high = np.ones_like(img) * 255
+        return spaces.Box(np.array(obs_low, dtype=np.uint8),
+                          np.array(obs_high, dtype=np.uint8))
         
-        return spaces.Box(np.array(obs_low, dtype=np.float32), np.array(obs_high, dtype=np.float32))
+    def grid_space(self):
+        obs_shape = self.gym_bot.getObsSize()
+        obs_low = np.zeros(obs_shape)
+        obs_high = np.ones(obs_shape) * math.inf
+        return spaces.Box(np.array(obs_low, dtype=np.float32),
+                          np.array(obs_high, dtype=np.float32))
+    
+    def create_observation_space(self):
+        if self.rgb:
+            return self.rgb_space()
+        else:
+            return self.grid_space()
         
-    # End Interface for gym env
-
     def initParameters(self, parameters):
         self.parameters = parameters
         self.virusEnabled = parameters.VIRUS_SPAWN
@@ -123,74 +161,20 @@ class AigarPelletEnv(gym.Env):
         # self.pointAveraging = parameters.EXPORT_POINT_AVERAGING
         self.field = Field(self.virusEnabled)
 
-
     def modifySettings(self, reset_time):
         self.resetLimit = reset_time
 
     def initialize(self):
-        if __debug__:
-            print("Initializing model...")
         self.field.initialize()
         self.resetBots()
-
-    def getStepData(self):
-        for bot in self.bots:
-            if bot.type == "Gym":
-                return bot.getGridStateRepresentation(), bot.getReward(), bot.player.getIsAlive()
-        return None, None, None
-        
-    
-    def getObsSpaceSize(self):
-        for bot in self.bots:
-            if bot.type == "Gym":
-                return bot.getObsSize()
-                
-    def update(self, action=None):
-        self.counter += 1
-
-        #timeStart = time.time()
-        # Get the decisions of the bots. Update the field accordingly.
-        self.takeBotActions(action)
-        self.field.update()
-        # Update view if view is enabled
-        #if self.guiEnabled and self.viewEnabled:
-        #    self.notify()
-        # Slow down game to match FPS (disabled in gym mode)
-        #if self.humans:
-        #    time.sleep(max( (1/FPS) - (time.time() - timeStart),0))
-        
-        
 
     def takeBotActions(self, action):
         for bot in self.bots:
             bot.makeMove(action)
 
-
     def resetBots(self):
         for bot in self.bots:
             bot.reset()
-
-    def plotSPGTrainingCounts(self):
-        for bot_idx, bot in enumerate(self.bots):
-            playerName = str(bot.getPlayer())
-            name = "BatchSizeOverTime" + playerName
-            if bot.learningAlg is not None and str(bot.learningAlg) == "AC":
-                counts = bot.learningAlg.counts
-                len_counts = len(counts)
-                y = [np.mean(counts[idx:idx + self.pointAveraging]) for idx in range(0, len_counts, self.pointAveraging)]
-                timeAxis = list(range(0, len_counts, self.pointAveraging))
-
-                plt.plot(timeAxis, y)
-                plt.title("Actor Training Batch Size During Training")
-                plt.xlabel("Training Steps")
-                plt.ylabel("Batch Size")
-                plt.savefig(self.path + name + ".pdf")
-                plt.close()
-
-                # Export counts:
-                with open(self.path + "data/" + name + ".txt", "w") as f:
-                    for item in counts:
-                        f.write("%s\n" % item)
 
     def printBotMasses(self):
         for bot in self.bots:
@@ -208,8 +192,10 @@ class AigarPelletEnv(gym.Env):
         rgbGenerator = None
         if botType == "Gym":
             rgbGenerator = RGBGenerator(self.field, parameters)
-        bot = Bot(newPlayer, self.field, botType, learningAlg, parameters, rgbGenerator)
+        bot = Bot(newPlayer, self.field, botType, learningAlg, parameters, rgbGenerator,
+                  use_enemy_grid=self.use_enemy_grid)
         self.addBot(bot)
+        return bot
 
     def createHuman(self, name):
         newPlayer = self.createPlayer(name)

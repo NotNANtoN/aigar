@@ -1,15 +1,9 @@
 import numpy
 from .cell import Cell
 from .parameters import *
-from .spatialHashTable import spatialHashTable
+from .spatialHashTable import SpatialHashTable
 import os
 import time
-
-
-# The Field class is the main field on which cells of all sizes will move
-# Its size depends on how many players are in the game
-# It always contains a certain number of viruses and collectibles and regulates their number and spawnings
-
 
 def adjustCellSize(cell, mass, hashtable):
     hashtable.deleteObject(cell)
@@ -27,6 +21,10 @@ def randomSize():
 
 
 class Field(object):
+    """ The Field class is the main field on which cells of all sizes will move
+    Its size depends on how many players are in the game
+    It always contains a certain number of viruses and collectibles and regulates their number and spawnings
+    """
     def __init__(self, virusEnabled):
         # Set numpy seed to process ID * current time, otherwise all subprocesses have same outcome
         numpy.random.seed(int(time.time())%os.getpid())
@@ -56,10 +54,10 @@ class Field(object):
 
     def initialize(self):
         self.size = int(SIZE_INCREASE_PER_PLAYER * math.sqrt(len(self.players)))
-        self.pelletHashTable = spatialHashTable(self.size, HASH_BUCKET_SIZE)
-        self.blobHashTable = spatialHashTable(self.size, HASH_BUCKET_SIZE)
-        self.playerHashTable = spatialHashTable(self.size, HASH_BUCKET_SIZE)
-        self.virusHashTable = spatialHashTable(self.size, HASH_BUCKET_SIZE)
+        self.pelletHashTable = SpatialHashTable(self.size, HASH_BUCKET_SIZE)
+        self.blobHashTable = SpatialHashTable(self.size, HASH_BUCKET_SIZE)
+        self.playerHashTable = SpatialHashTable(self.size, HASH_BUCKET_SIZE)
+        self.virusHashTable = SpatialHashTable(self.size, HASH_BUCKET_SIZE)
         for player in self.players:
             self.initializePlayer(player)
         self.maxCollectibleCount = self.size * self.size * MAX_COLLECTIBLE_DENSITY
@@ -72,10 +70,10 @@ class Field(object):
         self.blobs = []  # Ejected particles become pellets once momentum is lost
         self.deadPlayers = []
         self.viruses = []
-        self.pelletHashTable = spatialHashTable(self.size, HASH_BUCKET_SIZE)
-        self.blobHashTable = spatialHashTable(self.size, HASH_BUCKET_SIZE)
-        self.playerHashTable = spatialHashTable(self.size, HASH_BUCKET_SIZE)
-        self.virusHashTable = spatialHashTable(self.size, HASH_BUCKET_SIZE)
+        self.pelletHashTable = SpatialHashTable(self.size, HASH_BUCKET_SIZE)
+        self.blobHashTable = SpatialHashTable(self.size, HASH_BUCKET_SIZE)
+        self.playerHashTable = SpatialHashTable(self.size, HASH_BUCKET_SIZE)
+        self.virusHashTable = SpatialHashTable(self.size, HASH_BUCKET_SIZE)
 
         # Spawn stuff
         for player in self.players:

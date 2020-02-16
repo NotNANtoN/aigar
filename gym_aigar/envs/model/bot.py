@@ -1,6 +1,7 @@
 import numpy
+
 from .parameters import *
-from .spatialHashTable import spatialHashTable
+from .spatialHashTable import SpatialHashTable
 
 
 def isCellData(cell):
@@ -54,7 +55,7 @@ class Bot(object):
     def __repr__(self):
         return self.type #+ str(self.id)
 
-    def __init__(self, player, field, bot_type, learningAlg, parameters, rgbGenerator=None):
+    def __init__(self, player, field, bot_type, learningAlg, parameters, rgbGenerator=None, use_enemy_grid=True):
         if bot_type == "Greedy":
             self.id = self.greedyId
             self.greedyId += 1
@@ -64,12 +65,23 @@ class Bot(object):
         elif bot_type == "Random":
             self.id = self.randomId
             self.randomId += 1
+            
+        self.use_enemy_grid = use_enemy_grid
+        self.num_grids = 3
+        if self.use_enemy_grid:
+            self.num_grids += 1
+        if field.getVirusEnabled():
+            self.virus_enabled = True
+            self.num_grids += 1
+        else:
+            self.virus_enabled = False
+
+
         # TODO: What is the difference between memories and experiences?
         self.experiences = []
         self.rgbGenerator = rgbGenerator
         #self.gatherExperiences = parameters.GATHER_EXP
         self.parameters = parameters
-        self.learningAlg = None
         self.lastMass = None
         self.lastReward = None
         self.lastAction = None
@@ -77,8 +89,6 @@ class Bot(object):
         self.lastFovSize = None
         self.currentAction = None
         self.gridSquaresPerFov = GRID_SQUARES_PER_FOV
-        if learningAlg is not None:
-            self.learningAlg = learningAlg
 
         self.type = bot_type
         self.player = player
@@ -98,19 +108,11 @@ class Bot(object):
         
         self.reset()
 
-    def saveInitialModels(self, path):
-        if self.learningAlg is not None:
-            self.learningAlg.save(path, "init_")
-
-    def saveModel(self, path):
-        self.learningAlg.save(path)
 
     def resetMassList(self):
         self.totalMasses = []
 
     def reset(self):
-        if self.learningAlg is not None:
-            self.learningAlg.reset()
         self.lastMass = None
         self.oldState = None
         self.lastMemory = None
@@ -149,49 +151,6 @@ class Bot(object):
         self.oldState = newState
         self.lastAction = self.currentAction
         self.currentAction = newAction
-        if str(self.learningAlg) == "Q-learning":
-            self.currentActionIdx = extraInfo
-        else:
-            self.currentRawAction = extraInfo
-
-    # TODO: This function name should be changed
-    def move_NN(self):
-        self.currentlySkipping = False
-        if self.currentAction is not None:
-            self.updateRewards()
-            self.currentlySkipping = self.updateFrameSkip()
-
-        if not self.currentlySkipping:
-            newState = self.getStateRepresentation()
-
-            if self.gatherExperiences and self.oldState is not None:
-                self.time += 1
-                action = self.currentActionIdx if self.learningAlg.discrete else self.currentAction
-                if self.gatherExperiences:
-                    if str(self.learningAlg) != "Q-learning":
-                        if self.parameters.ALGORITHM == "CACLA":
-                            # Save raw action without noise in "done" field to later determine difference in policies
-                            self.experiences.append((self.oldState, action, self.lastReward, newState, self.currentRawAction))
-                        else:
-                            # Save None for SPG in "done" field. This will be later updated with the best sampled action
-                            self.experiences.append((self.oldState, action, self.lastReward, newState, None))
-                    else:
-                        self.experiences.append((self.oldState, action, self.lastReward, newState, None))
-                self.lastMemory = ([self.oldState], [action], [self.lastReward], [newState], [newState is not None])
-
-                if self.player.getSelected():
-                    print("Reward: ", self.cumulativeReward)
-
-            # Move
-            if self.player.getIsAlive():
-                extraInfo, new_action = self.learningAlg.decideMove(newState)
-
-                self.updateValues(extraInfo, new_action, newState)
-
-            
-            # else:
-            #     # TODO: This should probably be removed
-            #     self.reset()
 
 
     def setExploring(self, val):
@@ -210,11 +169,8 @@ class Bot(object):
             self.currentAction[3] = numpy.random.random() if ENABLE_EJECT else False
         self.time += 1
 
-
     def makeMove(self, action=None):
         self.totalMasses.append(self.player.getTotalMass())
-        if self.type == "NN":
-            self.move_NN()
 
         if not self.player.getIsAlive():
             return
@@ -226,9 +182,11 @@ class Bot(object):
             self.make_random_bot_move()
         
         if self.type == "Gym":
-            self.currentAction = action
+            self.currentAction = numpy.zeros(4)
+            self.currentAction[:len(action)] = action
+            
         if self.player.getIsAlive():
-                self.lastMass = self.player.getTotalMass()
+            self.lastMass = self.player.getTotalMass()
 
         action_taken = list(self.currentAction)
         if self.currentlySkipping:
@@ -291,7 +249,7 @@ class Bot(object):
 
 
     def getObsSize(self):
-        return self.gridSquaresPerFov * (self.field.getVirusEnabled() + 1 + 1 + 1 + 1 )
+        return (self.gridSquaresPerFov, self.gridSquaresPerFov, self.num_grids)
 
     def getGridStateRepresentation(self):
         # Get Fov infomation
@@ -306,7 +264,7 @@ class Bot(object):
         gridSquaresPerFov = self.gridSquaresPerFov
         gsSize = fovSize / gridSquaresPerFov  # (gs = grid square)
 
-        pelletSHT = spatialHashTable(fovSize, gsSize, left, top)  # SHT = spatial hash table
+        pelletSHT = SpatialHashTable(fovSize, gsSize, left, top)  # SHT = spatial hash table
         totalPellets = self.field.getPelletsInFov(fovPos, fovSize)
         pelletSHT.insertAllFloatingPointObjects(totalPellets)
 
@@ -316,14 +274,14 @@ class Bot(object):
         playerSHT = None
         enemySHT = None
         
-        playerSHT = spatialHashTable(fovSize, gsSize, left, top)
+        playerSHT = SpatialHashTable(fovSize, gsSize, left, top)
         playerSHT.insertAllFloatingPointObjects(playerCells)
-        enemySHT = spatialHashTable(fovSize, gsSize, left, top)
+        enemySHT = SpatialHashTable(fovSize, gsSize, left, top)
         enemySHT.insertAllFloatingPointObjects(enemyCells)
 
         virusSHT = None
         if self.field.getVirusEnabled():
-            virusSHT = spatialHashTable(fovSize, gsSize, left, top)
+            virusSHT = SpatialHashTable(fovSize, gsSize, left, top)
             virusCells = self.field.getVirusesInFov(fovPos, fovSize)
             virusSHT.insertAllFloatingPointObjects(virusCells)
 
@@ -344,16 +302,15 @@ class Bot(object):
         gsBiggestEnemyCellMass = numpy.zeros((gridSquaresPerFov, gridSquaresPerFov))
         gsBiggestOwnCellMass = numpy.zeros((gridSquaresPerFov, gridSquaresPerFov))
         gsVirus = None
-        if self.field.getVirusEnabled():
+        if self.virus_enabled:
             gsVirus = numpy.zeros((gridSquaresPerFov, gridSquaresPerFov))
 
-        gridView = numpy.zeros((NUM_OF_GRIDS, gridSquaresPerFov, gridSquaresPerFov))
+        gridView = numpy.zeros(self.getObsSize())
         # gsMidPoint is adjusted in the loops
         gsMidPoint = [left + gsSize / 2, top + gsSize / 2]
         for c in range(gridSquaresPerFov):
             for r in range(gridSquaresPerFov):
                 count = r + c * gridSquaresPerFov
-
                 # Only check for cells if the grid square fov is within the playing field
                 if not (gsMidPoint[0] + gsSize / 2 < 0 or gsMidPoint[0] - gsSize / 2 > fieldSize or
                         gsMidPoint[1] + gsSize / 2 < 0 or gsMidPoint[1] - gsSize / 2 > fieldSize):
@@ -368,9 +325,6 @@ class Bot(object):
                             if NORMALIZE_GRID_BY_MAX_MASS:
                                 pelletMassSum /= biggestCellMass
                         gsPelletMass[c][r] = pelletMassSum
-
-
-                    
                     # Create Enemy Cell mass representation
                     # Make the visionGrid's enemy cell representation a percentage. The player's cell mass
                     # in proportion to the biggest enemy cell's mass in each grid square.
@@ -413,24 +367,22 @@ class Bot(object):
             gsMidPoint[0] = left + gsSize / 2
             gsMidPoint[1] += gsSize
 
-
         count = 0
         if PELLET_GRID:
-            gridView[count] = gsPelletMass
+            gridView[:, :, count] = gsPelletMass
             count += 1
         if SELF_GRID:
-            gridView[count] = gsBiggestOwnCellMass
+            gridView[:, :, count] = gsBiggestOwnCellMass
             count += 1
         if WALL_GRID:
-            gridView[count] = gsWalls
+            gridView[:, :, count] = gsWalls
             count += 1
-        if ENEMY_GRID:
-            gridView[count] = gsBiggestEnemyCellMass
+        if self.use_enemy_grid:
+            gridView[:, :, count] = gsBiggestEnemyCellMass
             count += 1
-        if VIRUS_GRID:
-            gridView[count] = gsVirus
-            count += 1
-
+        if self.virus_enabled:
+            gridView[:, :, count] = gsVirus
+            count += 1            
         return gridView
 
 
@@ -609,9 +561,6 @@ class Bot(object):
 
     def getTrainMode(self):
         return self.trainMode
-
-    def getLearningAlg(self):
-        return self.learningAlg
 
     def getLastState(self):
         return self.oldState
