@@ -1,30 +1,28 @@
-import os
+import setuptools
 from setuptools import setup
 
-# Utility function to read the README file.
-# Used for the long_description.  It's nice, because now 1) we have a top level
-# README file and 2) it's easier to type in the README file than to put a raw
-# string in below ...
-def read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
-
+with open("README.md", "r") as fh:
+    long_description = fh.read()
+    
 with open("requirements.txt", "r") as fh:
     requirements = fh.read()
 
 setup(
-    name='gym_aigar',
-    version = "0.0.2",
+    name='aigar',
+    version = "0.0.1",
     author = "Anton Wiehe",
     author_email = "antonwiehe@gmail.com",
-    description = ("Gym envs that replicate the aigar.io game to a certain extent."),
+    description = ("Gym-compatible environments that replicate the aigar.io game to a certain extent."),
     license = "MIT",
     keywords = "reinforcement learning, environments, gym",
-    url = "https://github.com/NotNANtoN/gym_aigar",
-    packages = ['gym_aigar'],
+    url = "https://github.com/NotNANtoN/aigar",
+    packages = setuptools.find_packages(exclude=['tests', 'tests.*']),
     install_requires = requirements,
-    long_description = read('README.md'),
+    long_description = long_description,
+    long_description_content_type="text/markdown",
     classifiers = [
         "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Operating System :: OS Independent",
     ],
 )

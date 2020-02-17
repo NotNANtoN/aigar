@@ -1,9 +1,16 @@
 Gym env that replicates agar.io
 
+![Image showing the current player losing against a greedy bot](imgs/aigar.png)
+
 # How to install:
 cd to this repo. Then run:
 ```
 pip install -e .
+```
+
+Or simply:
+```
+pip install aigar
 ```
 
 # How to use:
