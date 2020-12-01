@@ -70,6 +70,8 @@ class AigarEnv(gym.Env):
         self.field.reset()
         self.resetBots()
         self.counter = 0
+        state = self.get_state()
+        return state
         
     def render(self, mode="human", close=False):
         if close:
@@ -89,18 +91,21 @@ class AigarEnv(gym.Env):
             img = np.zeros(shape=self.observation_space.shape, dtype=np.uint8)
         if mode == 'rgb_array':
             return img
-        elif mode is 'human':
+        elif mode == 'human':
             from gym.envs.classic_control import rendering
             if self.viewer is None:
                 self.viewer = rendering.SimpleImageViewer()
             self.viewer.imshow(img)
 
-        
-    def getStepData(self):
+    def get_state(self):
         if self.rgb:
             state = self.gym_bot.rgbGenerator.get_cnn_inputRGB(self.gym_bot.player)
         else:
             state = self.gym_bot.getGridStateRepresentation()
+        return state
+        
+    def getStepData(self):
+        state = get_state()
         reward = self.gym_bot.getReward()
         alive = self.gym_bot.player.getIsAlive()
         done = not alive
